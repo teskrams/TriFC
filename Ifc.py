@@ -3,6 +3,7 @@ import numpy as np
 from itertools import combinations
 import math
 import csv
+import os
 
 class IfcFile():
     def __init__(self, file):
@@ -148,9 +149,8 @@ class IfcFile():
 
         debug option will anable the function to print
         printing option adjusts the amount of prining
-        academic option for files with no extra information
-        need_formwork option for manual tell the model to formwork or not
-        simplify option for anabling simplifying of the element mesh
+        compute_new_triangles option tells wheter or not new triangles in 3d should be computed
+        compute_new_triangles_2d option tells wheter or not new triangles in 2d should be computed
         """
         for combo in combinations(self.elements, 2):
             test_needed = combo[0].need_collision_test(combo[1], debug=debug)
@@ -166,13 +166,10 @@ class IfcFile():
             element.update_verts_and_faces(collisions=True)
 
     def calculate_formwork(self, printing=1, debug=False):
-        """Calculates form
+        """Classifies all triagles in each element for formwork on all elements in the elements list
 
         debug option will anable the function to print
         printing option adjusts the amount of prining
-        academic option for files with no extra information
-        need_formwork option for manual tell the model to formwork or not
-        simplify option for anabling simplifying of the element mesh
         """
         def update_triangle(element, triangle1_def):
             point11 = [element.x_coords[triangle1_def[0]], element.y_coords[triangle1_def[0]], element.z_coords[triangle1_def[0]]]
@@ -214,10 +211,17 @@ class IfcFile():
                 element.formwork[i] = triangle1.formwork_needed(degree, collision, inside, element, inside_element, debug=False)
 
     def update_formwork_area(self):
+        """Updates the total formwork on each element in the elements list based on the formwork classification"""
         for i in range(len(self.elements)):
             self.elements[i].update_formwork_area()
 
     def make_result_csv(self, name=None, path=None, printing=1):
+        """Returns a csv with the results of the formwork classification for all elements in the elements list
+
+        printing option adjusts the amount of prining
+        path option telles where the csv will be saved
+        name option are the name of the result file
+        """
         result = []
         for i in range(len(self.elements)):
             element = self.elements[i]
@@ -243,7 +247,15 @@ class IfcFile():
                 writer.writerow(line) 
 
     def run_full_calculation(self, printing=1, name=None, compute_new_triangles_2d=False, compute_new_triangles=True, result_filepath=None, academic=False):
+        """Runs the whole model on the file and makes the csv with results
 
+        printing option adjusts the amount of prining
+        result_filepath option telles where the csv will be saved
+        name option are the name of the result file
+        compute_new_triangles option tells wheter or not new triangles in 3d should be computed
+        compute_new_triangles_2d option tells wheter or not new triangles in 2d should be computed
+        academic option for running the model only based on the geometry
+        """
         if printing > 0:
             print("Calculation started")
 
