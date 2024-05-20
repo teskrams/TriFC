@@ -281,6 +281,29 @@ class IfcFile():
         self.settings = ifcopenshell.geom.settings()
         self.model = ifcopenshell.open(file)
         self.elements = None
+        self.pset_quality = None
+        self.quality_attribute = None
+        self.pset_prod_method = None
+        self.prod_method_attribute = None
+        self.degree = 60
+        self.half_formwork = False
+
+    def set_ifc_file_read_config(self, pset_quality, quality_attribute, pset_prod_method, prod_method_attribute, degree=60, half_formwork=False):
+        """Setting the necessary attributes for reading a IFC-file
+
+        pset_quality: string
+        quality_attribute: string
+        pset_prod_method: string
+        prod_method_attribute: string
+        degree: float
+        half_formwork: boolean
+        """
+        self.pset_quality = pset_quality
+        self.quality_attribute = quality_attribute
+        self.pset_prod_method = pset_prod_method
+        self.prod_method_attribute = prod_method_attribute
+        self.degree = degree
+        self.half_formwork = half_formwork
 
     def material_kvalitet_is_betong(self, string, debug=False):
         """Return a boolean statement wheter or not the name idicates concrete
@@ -300,6 +323,25 @@ class IfcFile():
             return True
         return False
     
+    def check_need_formwork(self, info, debug=False):
+        """Returns True if the element-info indicates that it needs formwork"""
+        try: 
+            prod_metode = info.get(self.pset_prod_method).get(self.prod_method_attribute)
+        except:
+            if debug:
+                print("Could not fetch prod_method_attribute")
+        try: 
+            prod_metode = info.get("01 Merknader").get("K11 Produksjonsmetode")
+        except:
+            a = "a"
+        try: 
+            prod_metode = info.get("E6KAA").get("K11 Produksjonsmetode")
+        except:
+            a = "a"
+        if prod_metode == "Plasstøpt":
+            return True
+        return False
+
     def set_elements(self, elements=[], printing=1, debug=False, academic=False):
         """Sets the elements in the ifcfile based on the file or a set of elements.
 
@@ -337,18 +379,25 @@ class IfcFile():
                         if debug or printing > 3:
                             print("element ADDED")
                         continue
-                    try:
-                        #01 Merknader or E&KAA is the pset names used in the Kvithammar-Asen project
-                        material_kvalitet = info.get("01 Merknader").get("K01 Materialkvalitet")
-                    except:
-                        if debug or printing > 3:
-                            print("could not fetch 01 merknader")
-                    try:
-                        #01 Merknader or E&KAA is the pset names used in the Kvithammar-Asen project 
-                        material_kvalitet = info.get("E6KAA").get("K01 Materialkvalitet")
-                    except:
-                        if debug or printing > 3:
-                            print("could not fetch E6KAA")
+                    if self.pset_quality is None:
+                        try:
+                            material_kvalitet = info.get("01 Merknader").get("K01 Materialkvalitet")
+                        except:
+                            if debug or printing > 3:
+                                print("could not fetch 01 merknader")
+                        try:
+                            #Forskjellige navn på 01 merkander
+                            material_kvalitet = info.get("E6KAA").get("K01 Materialkvalitet")
+                        except:
+                            if debug or printing > 3:
+                                print("could not fetch E6KAA")
+                    else:
+                        try:
+                            #Forskjellige navn på 01 merkander
+                            material_kvalitet = info.get(self.pset_quality).get(self.quality_attribute)
+                        except:
+                            if debug or printing > 3:
+                                print("could not fetch pset_quality")
                     try:
                         net_volume = float(info.get("BaseQuantities").get("NetVolume"))
                         if net_volume < 0.05:
@@ -385,7 +434,6 @@ class IfcFile():
             if debug or printing > 1:
                 print("Number of elements found in file:", len(self.elements))
 
-
     def get_element(self, guid, need_formwork=True, simplify=True, academic=False, printing=1, debug=False):
         """Fetches an element from a ifcfile based on the guid of the element
 
@@ -406,11 +454,11 @@ class IfcFile():
 
         if academic:
             info = None
+        else:
+            need_formwork = self.check_need_formwork(info)
         element = IfcElement(faces, edges_vertices, vertices, guid=guid, name=name, info=info, need_formwork=need_formwork)
-
         if len(element.faces) > 200 and simplify:
             element.simplify_trimesh_element(target_face_count=200, debug=debug)
-
         return element
 
     def calculate_collisions(self, printing=1, debug=False, compute_new_triangles=False, compute_new_triangles_2d=False):
@@ -449,6 +497,8 @@ class IfcFile():
 
         for j in range(len(self.elements)):
             element = self.elements[j]
+            if printing > 1:
+                print("Calculating formwork for:", element.name)
             element.formwork = [False] * len(element.faces)
             element.formwork_info = [None] * len(element.faces)
 
@@ -458,18 +508,18 @@ class IfcFile():
             for i in range(len(element.faces)):
                 triangle1_def = element.faces[i]
                 triangle1 = update_triangle(element, triangle1_def)
-                # tried updating some here
-                if triangle1.is_normal_vector_pointing_out(element):
-                    normal = triangle1.normal_vector
+                normal = triangle1.get_normal_vector()
+                if triangle1.is_normal_vector_pointing_out(element, normal):
+                    normal = normal
                 else:
-                    normal = triangle1.normal_vector * -1
+                    normal = normal * -1
 
                 degree = math.degrees(np.arcsin(normal[2]))
                 collision = element.collisions[i]
                 inside, inside_element = element.triangle_inside_element_in_list(triangle1, self.elements)
 
                 if inside:
-                    inside = triangle1.inside_element_v6(inside_element) # skal være v5
+                    inside = triangle1.inside_element_v6(inside_element)
 
                 decicion_variables = (degree, collision, inside, inside_element)
                 element.formwork_info[i] = decicion_variables
@@ -477,15 +527,15 @@ class IfcFile():
                     print("(j, i)", (j, i))
                     print("(degree, collision, inside)", (degree, collision, inside))
 
-                element.formwork[i] = triangle1.formwork_needed(degree, collision, inside, element, inside_element, debug=False)
+                element.formwork[i], element.half_formwork[i] = triangle1.formwork_needed(degree, collision, inside, element, inside_element, debug=False, slope_degree=self.degree)
 
     def update_formwork_area(self):
         """Updates the total formwork on each element in the elements list based on the formwork classification"""
         for i in range(len(self.elements)):
-            self.elements[i].update_formwork_area()
+            self.elements[i].update_formwork_area(wall_formwork=self.half_formwork)
 
     def make_result_csv(self, name=None, path=None, printing=1):
-        """Returns a csv with the results of the formwork classification for all elements in the elements list
+        """Saves a csv with the results of the formwork classification for all elements in the elements list
 
         printing option adjusts the amount of prining
         path option telles where the csv will be saved
@@ -515,7 +565,34 @@ class IfcFile():
             for line in result:
                 writer.writerow(line) 
 
-    def run_full_calculation(self, printing=1, name=None, compute_new_triangles_2d=False, compute_new_triangles=True, result_filepath=None, academic=False):
+    def add_formwork_in_ifc_file_and_save(self, path=None, name=None):
+        """Saves a ifc-file with the results of the formwork classification for all elements in the elements list
+
+        path: string
+        name: string
+        """
+        for element in self.elements:
+            guid = element.guid
+            ifc_element = self.model.by_guid(guid)
+            pset = ifcopenshell.api.run("pset.add_pset", self.model, product=ifc_element, name="TriFC")
+            formwork = str(element.formwork_area)
+            ifcopenshell.api.run("pset.edit_pset", self.model, pset=pset, properties={"Calculated_formwork": formwork})
+        
+        file_path = "/Users/theodor/kode/master/master/ifc_results"
+
+        if path is not None:
+            file_path = path
+
+        file_name = "results.ifc"
+
+        if name is not None:
+            file_name = name
+
+        result_filepath = os.path.join(file_path, file_name)
+
+        self.model.write(result_filepath)
+
+    def run_full_calculation(self, printing=1, name=None, compute_new_triangles_2d=False, compute_new_triangles=True, result_filepath=None, academic=False, ifc_name=None, ifc_path=None):
         """Runs the whole model on the file and makes the csv with results
 
         printing option adjusts the amount of prining
@@ -527,31 +604,29 @@ class IfcFile():
         """
         if printing > 0:
             print("Calculation started")
-
         self.set_elements(printing=printing, academic=academic)
-
         if printing > 0:
-            print("All elements loaded")
+            print("## 1 ##  All elements loaded")
 
         self.calculate_collisions(debug=False, printing=printing, compute_new_triangles=compute_new_triangles, compute_new_triangles_2d=compute_new_triangles_2d)
-
         if printing > 0:
-            print("All collisions calculated")
+            print("## 2&3 ##  All collisions calculated")
 
         self.calculate_formwork(debug=False, printing=printing)
-
         if printing > 0:
-            print("All triangles formwork classified")
+            print("## 4 ##  All triangles formwork classified")
 
         self.update_formwork_area()
-
         if printing > 0:
-            print("Formwork area calculated for all elements")
+            print("## 5 ##  Formwork area calculated for all elements")
 
         self.make_result_csv(name=name, path=result_filepath)
-
         if printing > 0:
-            print("Results csv made")
+            print("## 6 ##  Results csv made")
+
+        self.add_formwork_in_ifc_file_and_save(name=ifc_name, path=ifc_path)
+        if printing > 0:
+            print("## 7 ##  Formwork added in ifcfile")
 
 
 
@@ -571,8 +646,10 @@ class IfcElement():
         self.name = name
         self.guid = guid
         self.info = info
-        if info is not None:
+        if info is not None and need_formwork is None:
             self.need_formwork = self.check_need_formwork(info)
+        elif need_formwork is None:
+            self.need_formwork = True
         else:
             self.need_formwork = need_formwork
         self.faces = faces
@@ -617,9 +694,11 @@ class IfcElement():
         self.collisions = [False] * len(faces)
         self.collisions_copy = [False] * len(faces)
         self.formwork = [False] * len(faces)
+        self.half_formwork = [False] * len(faces)
         self.formwork_info = None
         self.formwork_area = 0
         self.triangle_areas = []
+        self.normal_vectors = [None] * len(faces)
 
     def get_surface_area(self):
         """Returns the size of the outer surface of the element"""
@@ -742,14 +821,20 @@ class IfcElement():
         self.faces_copy = temp_faces
         self.collisions_copy = temp_collisions
 
-    def update_formwork_area(self):
-        """Updates the formwork amount for the element based on the formwork list"""
+    def update_formwork_area(self, wall_formwork=False):
+        """Updates the formwork amount for the element based on the formwork list
+        
+        wall_formwork: boolean 
+        """
         self.triangle_areas = [0] * len(self.faces)
         for i in range(len(self.faces)):
             triangle_area = self.get_triangle(i).area()
             self.triangle_areas[i] = triangle_area
             if self.formwork[i]:
-                self.formwork_area = self.formwork_area + triangle_area
+                if wall_formwork and self.half_formwork[i]:
+                    self.formwork_area = self.formwork_area + (triangle_area/2)
+                else:
+                    self.formwork_area = self.formwork_area + triangle_area
 
     def check_need_formwork(self, info):
         """Returns True if a element need formwork based on the production method and else False
@@ -1265,20 +1350,17 @@ class IfcTriangle():
             return True
         return False
     
-    def inside_element_v5(self, element, debug=False):
+    def inside_element_v6(self, element, debug=False):
         """Returns True if the triangle is inside the element, else False
         using ray-casting
 
         element: IfcElement
         debug option enables printing
         """   
-        if self.is_point_inside_element(self.point1, element, debug=debug) or self.is_point_inside_element(self.point2, element, debug=debug) or self.is_point_inside_element(self.point2, element, debug=debug) or self.is_point_inside_element(self.get_point_near_middle_of_triangle(), element, debug=debug):
+        if self.is_point_inside_element(self.get_point_near_middle_of_triangle(), element, debug=debug, new_version=False):
             return True
         return False
 
-    ##########  Should change it use the old version and using the original triangles from the element instead
-    ### NB ###
-    ##########
     def is_point_inside_element(self, point, element, debug=False, new_version=False):
         """Returns True if the point is inside the element, else False
 
@@ -1348,8 +1430,8 @@ class IfcTriangle():
         for i in range(2):
             intersections = 0
             direction = 1 - 2*i
-            for i in range(len(element.faces)):
-                triangle = element.get_triangle(i)
+            for i in range(len(element.faces_org)):
+                triangle = element.get_org_triangle(i)
                 intersects = ray_intersects_triangle(point, direction, triangle)
                 if intersects:
                     if debug:
@@ -1796,7 +1878,7 @@ class IfcTriangle():
     
     def new_2d_triangles_needed(self, degree):
         """Returns False if the triangle slope is more than the degree"""
-        z_component_normal = self.normal_vector()[2]
+        z_component_normal = self.get_normal_vector()[2]
         degree = math.degrees(np.arcsin(z_component_normal))
         if abs(degree) > degree:
             return False
@@ -2108,7 +2190,7 @@ class IfcTriangle():
 
         return collisions
     
-    def formwork_needed(self, degree, collision, inside, element, inside_element, debug=False):
+    def formwork_needed(self, degree, collision, inside, element, inside_element, debug=False, slope_degree=60):
         """Returns true if the triangle needs formwork, else False
         
         degree: float
@@ -2116,60 +2198,64 @@ class IfcTriangle():
         inside: boolean
         element: IfcElement
         inside_element: IfcElement
-        debug: enabling printing
+        debug: enabling printing 
         """
         formwork = False
+        half_formwork = False
 
         if not element.need_formwork:
             return False
 
         if not collision:
-            if degree < 60:
+            if degree < slope_degree:
                 if inside:
                     if element.z_min < inside_element.z_min:
                         if debug:
                             print("[1], formwork")
                         formwork = True
-                        return formwork
+                        return formwork, half_formwork
                     else:
                         if debug:
                             print("[2], no formwork")
                         formwork = False
-                        return formwork
+                        return formwork, half_formwork
                 else:
                     if abs(degree) > 80 and abs(degree) < 95:
                             if debug:
                                 print("[3], formwork")
                             formwork = True
-                            return formwork
+                            return formwork, half_formwork
                     else:
                         if debug:
-                            print("[4], formwork")
+                            print("[3], formwork")
                         formwork = True
-                        return formwork
+                        return formwork, half_formwork
             else:
                 if debug:
-                    print("[5], no formwork")
+                    print("[4], no formwork")
                 formwork = False
-                return formwork            
+                return formwork, half_formwork                
 
         if collision:
             if abs(degree) > 80 and abs(degree) < 95:
                 if debug:
-                    print("[7]")
+                    print("[5]")
                 formwork = False
-                return formwork
-            if degree < 60: 
+                return formwork, half_formwork
+            if degree < slope_degree:
+                if degree > -80:
+                    half_formwork = True
+
                 if debug:
-                    print("[8]")
+                    print("[6]")
                 formwork = True
-                return formwork
+                return formwork, half_formwork
             else:
                 formwork = False
                 if debug:
-                    print("[9]")
-                return formwork
+                    print("[7]")
+                return formwork, half_formwork
         
         if debug:
             print("[11]")
-        return formwork
+        return formwork, half_formwork
