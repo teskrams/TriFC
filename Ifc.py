@@ -1,4 +1,6 @@
 import ifcopenshell
+import ifcopenshell.geom
+import ifcopenshell.util.shape
 import numpy as np
 from itertools import combinations
 import math
@@ -1672,6 +1674,40 @@ class IfcTriangle():
                 intersections.append(None)
         return intersections
     
+    def is_point_in_triangle(self, pt, v1, v2, v3, debug=False):
+        """Returns True if the point is inside the triangle, else False
+        
+        pt: point
+        v1: point
+        v2: point
+        v3: point
+        debug: enables printing
+        """
+        if pt == None:
+            return False
+        
+        pt, v1, v2, v3 = np.array(pt), np.array(v1), np.array(v2), np.array(v3)
+        vec_v1pt = pt - v1
+        vec_v2pt = pt - v2
+        vec_v3pt = pt - v3
+
+        tri_normal = np.cross(v2 - v1, v3 - v1)
+
+        normal1 = np.cross(vec_v1pt, vec_v2pt)
+        normal2 = np.cross(vec_v2pt, vec_v3pt)
+        normal3 = np.cross(vec_v3pt, vec_v1pt)
+
+        if debug:
+            print(np.dot(normal1, tri_normal))
+            print(np.dot(normal2, tri_normal))
+            print(np.dot(normal3, tri_normal))
+
+        inside = (np.dot(normal1, tri_normal) >= -0.00001 and
+                np.dot(normal2, tri_normal) >= -0.00001 and
+                np.dot(normal3, tri_normal) >= -0.00001)
+
+        return inside
+
     def is_point_in_triangle_v2(self, pt, debug=False):
         """Returns True if the point is inside the triangle, else False
         
@@ -1812,7 +1848,6 @@ class IfcTriangle():
             triangle2.print()
             print("det_values_2:", det_values_2)
 
-        result = False
         i, j = self.isect_triangle_edges_plane_v3(self, triangle2.point2, triangle2.normal_vector, debug=debug)
         return [i, j]
 
@@ -2152,7 +2187,7 @@ class IfcTriangle():
                     print("collision")
                 result = True
                 if compute_new_triangles:
-                    points_on_line = self.get_edge_intersection_points(triangle2, return_points=True)
+                    points_on_line = self.get_edge_intersection_points(triangle2)
                     new_triangles = self.create_non_intersecting_triangles(points_on_line)
                     new_triangles_2 = triangle2.create_non_intersecting_triangles(points_on_line)
                     return result, new_triangles, new_triangles_2, False, collision_2d
