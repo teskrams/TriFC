@@ -1,6 +1,7 @@
 import ifcopenshell
 import ifcopenshell.geom
 import ifcopenshell.util.shape
+import ifcopenshell.api
 import numpy as np
 from itertools import combinations
 import math
@@ -721,20 +722,20 @@ class IfcElement():
 
     def get_org_triangle(self, id):
         """Returns the orgininal IfcTriangle defined by the vertices and face on the given index needs index from the orginal lists"""
-        triangle_def = self.faces[id]
-        point1 = [self.x_coords[triangle_def[0]], self.y_coords[triangle_def[0]], self.z_coords[triangle_def[0]]]
-        point2 = [self.x_coords[triangle_def[1]], self.y_coords[triangle_def[1]], self.z_coords[triangle_def[1]]]
-        point3 = [self.x_coords[triangle_def[2]], self.y_coords[triangle_def[2]], self.z_coords[triangle_def[2]]]
+        triangle_def = self.faces_org[id]
+        point1 = [self.x_coords_org[triangle_def[0]], self.y_coords_org[triangle_def[0]], self.z_coords_org[triangle_def[0]]]
+        point2 = [self.x_coords_org[triangle_def[1]], self.y_coords_org[triangle_def[1]], self.z_coords_org[triangle_def[1]]]
+        point3 = [self.x_coords_org[triangle_def[2]], self.y_coords_org[triangle_def[2]], self.z_coords_org[triangle_def[2]]]
         triangle = IfcTriangle(point1, point2, point3)
 
         return triangle 
     
     def get_temp_triangle(self, id):
         """Returns the copy IfcTriangle defined by the vertices and face on the given index needs index from the copy lists"""
-        triangle_def = self.faces[id]
-        point1 = [self.x_coords[triangle_def[0]], self.y_coords[triangle_def[0]], self.z_coords[triangle_def[0]]]
-        point2 = [self.x_coords[triangle_def[1]], self.y_coords[triangle_def[1]], self.z_coords[triangle_def[1]]]
-        point3 = [self.x_coords[triangle_def[2]], self.y_coords[triangle_def[2]], self.z_coords[triangle_def[2]]]
+        triangle_def = self.faces_copy[id]
+        point1 = [self.x_coords_copy[triangle_def[0]], self.y_coords_copy[triangle_def[0]], self.z_coords_copy[triangle_def[0]]]
+        point2 = [self.x_coords_copy[triangle_def[1]], self.y_coords_copy[triangle_def[1]], self.z_coords_copy[triangle_def[1]]]
+        point3 = [self.x_coords_copy[triangle_def[2]], self.y_coords_copy[triangle_def[2]], self.z_coords_copy[triangle_def[2]]]
         triangle = IfcTriangle(point1, point2, point3)
 
         return triangle
@@ -775,6 +776,7 @@ class IfcElement():
         """Updates the orginal vertices and face list to be similar to the vertices_copy and faces_copy"""
         self.set_verticies(self.verticies_copy)
         self.faces = self.faces_copy
+        self.half_formwork = [False]*len(self.faces_copy)
         if collisions:
             self.collisions = self.collisions_copy
 
@@ -950,25 +952,25 @@ class IfcElement():
                     print("(self, element)", self.guid, element2.guid)
                     print("(i, j)", (i, j))
                 
-                ### Not the best solution, but for now
-                compute_new_triangles_2d_1 = compute_new_triangles_2d
-                if compute_new_triangles_2d and (i >= len(self.faces_changed) or j >= len(element2.faces_changed)):
-                    compute_new_triangles_2d_1 = False
-                elif (i < len(self.faces_changed) and j < len(element2.faces_changed)):
-                    if compute_new_triangles_2d and (self.faces_changed[i] or element2.faces_changed[j]):
-                        compute_new_triangles_2d_1 = False
-                ### needs development
+                # ### Not the best solution, but for now
+                # compute_new_triangles_2d_1 = compute_new_triangles_2d
+                # if compute_new_triangles_2d and (i >= len(self.faces_changed) or j >= len(element2.faces_changed)):
+                #     compute_new_triangles_2d_1 = False
+                # elif (i < len(self.faces_changed) and j < len(element2.faces_changed)):
+                #     if compute_new_triangles_2d and (self.faces_changed[i] or element2.faces_changed[j]):
+                #         compute_new_triangles_2d_1 = False
+                # ### needs development
 
                 temp_collision, new_triangles_1, new_triangles_2, changed_2d, collision_2d = triangle1.collision_test(triangle2, compute_new_triangles=compute_new_triangles, compute_new_triangles_2d=compute_new_triangles_2d, debug=debug)
 
-                ### needs to make new function for computing new triangles in 2d!!
-                if collision_2d and compute_new_triangles_2d_1:
-                    if debug:
-                        print("start compute new_triangles in 2d")
-                    new_triangles_1 = triangle1.compute_new_triangles_2d_v4(element2, debug=debug)
-                    if new_triangles_1 == None:
-                        new_triangles_2 = triangle2.compute_new_triangles_2d_v4(self, debug=debug)
-                ### This does not work
+                # ### needs to make new function for computing new triangles in 2d!!
+                # if collision_2d and compute_new_triangles_2d_1:
+                #     if debug:
+                #         print("start compute new_triangles in 2d")
+                #     new_triangles_1 = triangle1.compute_new_triangles_2d_v4(element2, debug=debug)
+                #     if new_triangles_1 == None:
+                #         new_triangles_2 = triangle2.compute_new_triangles_2d_v4(self, debug=debug)
+                # ### This does not work
 
                 if temp_collision:
                     collision = True
@@ -977,6 +979,7 @@ class IfcElement():
                     if debug:
                         print("New_triangles != None")
                         print("triangle1_def", self.faces_copy[i])
+                        print("new_triangles", new_triangles_1[0].point1, new_triangles_1[1].point1)
                     self.faces_copy.remove(self.faces_copy[i])
                     self.collisions_copy.pop(i)
                     i = i - 1
@@ -1013,7 +1016,6 @@ class IfcTriangle():
         self.y_max = max(self.y_coords)
         self.z_min = min(self.z_coords)
         self.z_max = max(self.z_coords)
-        self.normal_vector = self.get_normal_vector() # Should not compute this every time, not always needed
 
     def get_point_near_middle_of_triangle(self):
         """Returns point in the middle of the triangle"""
@@ -1258,12 +1260,13 @@ class IfcTriangle():
 
         return True
     
-    def is_normal_vector_pointing_out(self, element, debug=False):
+    def is_normal_vector_pointing_out(self, element, normal_vector, debug=False):
         """Returns True if the triangles normal_vector is pointing out of the element it belongs to, else False
 
         element: IfcElement
         debug option enables printing
         """       
+        
         def ray_intersects_triangle(ray_origin, ray_vector, triangle):
             
             ray_origin = np.array(ray_origin)
@@ -1295,7 +1298,7 @@ class IfcTriangle():
             return t >= 0.01
         
         ray_origin = self.get_point_near_middle_of_triangle()
-        ray_vector = self.normal_vector
+        ray_vector = normal_vector
 
         if debug:
             print("ray_origin:", ray_origin)
@@ -1307,8 +1310,7 @@ class IfcTriangle():
             intersects = ray_intersects_triangle(ray_origin, ray_vector, triangle)
             if intersects:
                 if debug:
-                    print("Normal vector intersects triangle")
-                    print("Triangle:", triangle)
+                    print("Normal vector intersects triangle in element")
                 intersections += 1
         
         if debug:
@@ -1317,7 +1319,7 @@ class IfcTriangle():
         if intersections % 2 == 1:
             return False
 
-        return True 
+        return True   
     
     def is_point_coplanar(self, point, debug=False): 
         """Returns True if the point is coplanar with the triangle"""
@@ -1848,7 +1850,9 @@ class IfcTriangle():
             triangle2.print()
             print("det_values_2:", det_values_2)
 
-        i, j = self.isect_triangle_edges_plane_v3(self, triangle2.point2, triangle2.normal_vector, debug=debug)
+        i, j = self.isect_triangle_edges_plane_v3(self, triangle2.point2, triangle2.get_normal_vector(), debug=debug)
+        if debug:
+            print("intersection points [i, j]", [i,j])
         return [i, j]
 
     def create_non_intersecting_triangles(self, line_points, debug=False):
@@ -2187,10 +2191,10 @@ class IfcTriangle():
                     print("collision")
                 result = True
                 if compute_new_triangles:
-                    points_on_line = self.get_edge_intersection_points(triangle2)
-                    new_triangles = self.create_non_intersecting_triangles(points_on_line)
-                    new_triangles_2 = triangle2.create_non_intersecting_triangles(points_on_line)
-                    return result, new_triangles, new_triangles_2, False, collision_2d
+                    points_on_line = self.get_edge_intersection_points(triangle2, debug=debug)
+                    new_triangles = self.create_non_intersecting_triangles(points_on_line, debug=debug)
+                    #new_triangles_2 = triangle2.create_non_intersecting_triangles(points_on_line)
+                    return result, new_triangles, None, False, collision_2d
                 return result, None, None, False, collision_2d 
 
             if debug:
