@@ -1,4 +1,4 @@
-from Ifc import IfcFile
+from TriFC.IfcFile import IfcFile
 
 ifcfile = IfcFile("/Users/theodor/kode/master/TriFC/triFC/example_ifc/academic_test_2.ifc")
 
