@@ -1008,9 +1008,9 @@ class IfcTriangle():
                 return True
             return False
         
-        origin, axis1, axis2, point1_2d = self.project_to_plane([self.point1], self.normal_vector, debug=debug)
-        origin, axis1, axis2, point2_2d = self.project_to_plane([self.point2], self.normal_vector, origin=origin, debug=debug)
-        origin, axis1, axis2, point3_2d = self.project_to_plane([self.point3], self.normal_vector, origin=origin, debug=debug)
+        origin, axis1, axis2, point1_2d = self.project_to_plane([self.point1], self.get_normal_vector(), debug=debug)
+        origin, axis1, axis2, point2_2d = self.project_to_plane([self.point2], self.get_normal_vector(), origin=origin, debug=debug)
+        origin, axis1, axis2, point3_2d = self.project_to_plane([self.point3], self.get_normal_vector(), origin=origin, debug=debug)
         triangle_2d = [point1_2d[0], point2_2d[0], point3_2d[0]]
         triangle_edges_2d = [[point1_2d[0], point2_2d[0]], [point1_2d[0], point3_2d[0]], [point2_2d[0], point3_2d[0]]]
 
@@ -1026,7 +1026,7 @@ class IfcTriangle():
                 if debug:
                     print("Both points are coplanar")
                 intersection_points = []
-                origin, axis1, axis2, edge_points_2d = self.project_to_plane([edge_point1, edge_point2], self.normal_vector, origin=origin, debug=debug)
+                origin, axis1, axis2, edge_points_2d = self.project_to_plane([edge_point1, edge_point2], self.get_normal_vector(), origin=origin, debug=debug)
                 for t_edge_2d in triangle_edges_2d:
                     intersection_point = self.line_intersection(t_edge_2d, edge_points_2d, debug=debug)
                     if intersection_point is not None and point_inside_line(intersection_point, t_edge_2d):
@@ -1079,7 +1079,7 @@ class IfcTriangle():
                 print("coplanar")
                 print("2d-check needed")
 
-            normal = self.normal_vector
+            normal = self.get_normal_vector()
 
             def project_to_plane(points, normal, debug=False):
                 axis1 = np.cross(normal, [1, 0, 0]) if normal[0] == 0 else np.cross(normal, [0, 1, 0])
