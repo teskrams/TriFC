@@ -88,6 +88,8 @@ class IfcFile():
         printing option adjusts the amount of prining
         academic option for files with no extra information
         """
+        if academic:
+            print("running in ACADEMIC MODE no elements filterd")
         finale_elements = []
         if len(elements) > 0:
             for i in range(len(elements)):
